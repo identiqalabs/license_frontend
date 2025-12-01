@@ -1,6 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { getAllLicenses } from './ApiClient';
 
+const getVersionLabel = (license) => (
+  license?.zabbixVersion ||
+  license?.version ||
+  license?.NMSVersion ||
+  license?.grafanaVersion ||
+  license?.VAPTVersion ||
+  license?.appVersion ||
+  null
+);
+
+const getHostCount = (license) => (
+  typeof license?.totalHosts === 'number' ? license.totalHosts : null
+);
+
 const NoteCard = ({ group }) => {
   const [flipped, setFlipped] = useState(false);
   return (
@@ -14,7 +28,7 @@ const NoteCard = ({ group }) => {
           <div className="note-body">
             {group.items.map(item => (
               <div key={item._id} className="note-line">
-                <span className="pill pill-soft" style={{ marginRight: 8 }}>{item.application || item.product}</span>
+                <span className="pill pill-soft" style={{ marginRight: 8 }}>{item.application || item.product || '—'}</span>
               </div>
             ))}
           </div>
@@ -23,17 +37,18 @@ const NoteCard = ({ group }) => {
         {/* Back side: details */}
         <div className="flip-back note-card">
           <div className="note-title">{group.clientId}</div>
-          <div className="note-sub">Licenses</div>
+          <div className="note-sub">Licenses & Monitoring</div>
           <div className="note-body">
+            <div className="note-line" style={{ marginBottom: 4, fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Installed Products
+            </div>
             {group.items.map(item => (
               <div key={item._id} className="note-line">
                 <span className="pill pill-soft" style={{ marginRight: 8 }}>{item.application || item.product}</span>
                 <span className="note-kv"><b>Type:</b> {item.licenseType}</span>
-                <span className="note-kv"><b>Version:</b> {item.zabbixVersion || item.version || item.NMSVersion || '—'}</span>
+                <span className="note-kv"><b>Version:</b> {getVersionLabel(item) || '—'}</span>
                 <span className="note-kv"><b>Expiry:</b> {new Date(item.expiryDate).toLocaleDateString()}</span>
-                {typeof item.totalHosts === 'number' && (
-                  <span className="note-kv"><b>Hosts:</b> {item.totalHosts}</span>
-                )}
+                <span className="note-kv"><b>Hosts:</b> {getHostCount(item) ?? '—'}</span>
               </div>
             ))}
           </div>
@@ -79,14 +94,28 @@ const Overview = () => {
           clientId: key,
           email: lic.identiqaEmail || lic.clientEmail || lic.email || '—',
           items: [],
+          totalHosts: 0,
+          versions: new Set()
         });
       }
-      map.get(key).items.push(lic);
-      if (!map.get(key).email && (lic.identiqaEmail || lic.clientEmail || lic.email)) {
-        map.get(key).email = lic.identiqaEmail || lic.clientEmail || lic.email;
+      const group = map.get(key);
+      group.items.push(lic);
+      if (!group.email && (lic.identiqaEmail || lic.clientEmail || lic.email)) {
+        group.email = lic.identiqaEmail || lic.clientEmail || lic.email;
+      }
+      const hostCount = getHostCount(lic);
+      if (typeof hostCount === 'number') {
+        group.totalHosts += hostCount;
+      }
+      const versionLabel = getVersionLabel(lic);
+      if (versionLabel) {
+        group.versions.add(versionLabel);
       }
     }
-    return Array.from(map.values());
+    return Array.from(map.values()).map(group => ({
+      ...group,
+      versions: Array.from(group.versions)
+    }));
   }, [licenses]);
 
   const filteredGroups = useMemo(() => {
